@@ -282,19 +282,9 @@ def parse_raw_candidates(
             elif outcome == "onboard":
                 d["onboard"] += 1
 
-        # Cascade: candidates who reached later stages passed earlier ones
-        # Offer stage candidates passed OS (they got inclined)
-        if stage == "offer":
-            d["os_incline"] += 1
-        # Candidates at OS or beyond passed BPS
-        if stage in ("os", "offer"):
-            d["bps_incline"] += 1
-        # Candidates at BPS or beyond passed OA
-        if stage in ("bps", "os", "offer"):
-            d["oa_incline"] += 1
-        # Candidates at OA or beyond passed RR
-        if stage in ("oa", "bps", "os", "offer"):
-            d["rr_incline"] += 1
+        # NOTE: No cascade counting. Each candidate is counted only at
+        # their current/final status. The Summary sheet in the Excel
+        # already tracks completed stages separately via pivot tables.
 
     # ── Count demands from Open Demands sheet or unique Req IDs ──
     req_col = _find_col(df, ["Req ID", "req_id", "Requisition ID", "Job ID"])
@@ -425,9 +415,29 @@ def compute_funnel_metrics(groups: list[SkillGroup]) -> dict:
         for key in totals:
             totals[key] += getattr(g, key, 0)
 
-    oa_completed = totals["oa_incline"] + totals["oa_reject"]
-    bps_completed = totals["bps_incline"] + totals["bps_reject"]
-    os_completed = totals["os_incline"] + totals["os_reject"]
+    # OA completed = candidates who got OA result (passed to BPS or rejected at OA)
+    # Since no cascade: OA incline = those explicitly at OA incline stage
+    # But candidates at BPS/OS/Offer all passed OA, so:
+    oa_passed = (totals["bps_awaiting"] + totals["bps_scheduled"] + totals["bps_incline"]
+                 + totals["bps_reject"] + totals["os_awaiting"] + totals["os_scheduled"]
+                 + totals["os_incline"] + totals["os_reject"]
+                 + totals["offer_made"] + totals["offer_accept"] + totals["offer_renege"]
+                 + totals["onboard"] + totals["oa_incline"])
+    oa_completed = oa_passed + totals["oa_reject"]
+
+    # BPS completed = candidates who got BPS result
+    bps_passed = (totals["os_awaiting"] + totals["os_scheduled"]
+                  + totals["os_incline"] + totals["os_reject"]
+                  + totals["offer_made"] + totals["offer_accept"] + totals["offer_renege"]
+                  + totals["onboard"] + totals["bps_incline"])
+    bps_completed = bps_passed + totals["bps_reject"]
+
+    # OS completed = candidates who got OS result
+    os_passed = (totals["os_incline"] + totals["offer_made"] + totals["offer_accept"]
+                 + totals["offer_renege"] + totals["onboard"])
+    os_completed = os_passed + totals["os_reject"]
+
+    # Offers released
     offers_released = totals["offer_made"] + totals["offer_accept"] + totals["offer_renege"]
 
     return {
@@ -436,10 +446,10 @@ def compute_funnel_metrics(groups: list[SkillGroup]) -> dict:
         "bps_completed": bps_completed,
         "os_completed": os_completed,
         "offers_released": offers_released,
-        "oa_pass_pct": round(totals["oa_incline"] / oa_completed * 100, 1) if oa_completed else None,
+        "oa_pass_pct": round(oa_passed / oa_completed * 100, 1) if oa_completed else None,
         "oa_reject_pct": round(totals["oa_reject"] / oa_completed * 100, 1) if oa_completed else None,
-        "bps_to_os_pct": round(totals["bps_incline"] / bps_completed * 100, 1) if bps_completed else None,
-        "os_to_incline_pct": round(totals["os_incline"] / os_completed * 100, 1) if os_completed else None,
+        "bps_to_os_pct": round(bps_passed / bps_completed * 100, 1) if bps_completed else None,
+        "os_to_incline_pct": round(os_passed / os_completed * 100, 1) if os_completed else None,
         "offer_accept_pct": round(totals["offer_accept"] / offers_released * 100, 1) if offers_released else None,
         "offer_renege_pct": round(totals["offer_renege"] / offers_released * 100, 1) if offers_released else None,
     }
@@ -458,12 +468,15 @@ def derive_business_updates(groups: list[SkillGroup]) -> list[BusinessUpdate]:
     for biz_name, biz_groups in biz_map.items():
         total_os_incline = sum(g.os_incline for g in biz_groups)
         total_os_reject = sum(g.os_reject for g in biz_groups)
-        os_completed = total_os_incline + total_os_reject
-        conv_pct = round(total_os_incline / os_completed * 100, 1) if os_completed else None
+        # OS passed includes os_incline + offer candidates (they passed OS)
+        total_offer = sum(g.offer_made + g.offer_accept + g.offer_renege + g.onboard for g in biz_groups)
+        os_passed = total_os_incline + total_offer
+        os_completed = os_passed + total_os_reject
+        conv_pct = round(os_passed / os_completed * 100, 1) if os_completed else None
 
         updates.append(BusinessUpdate(
             business_name=biz_name,
-            os_inclines=total_os_incline,
+            os_inclines=os_passed,
             offer_accepts=sum(g.offer_accept for g in biz_groups),
             offer_declines=sum(g.offer_renege for g in biz_groups),
             offer_stage=sum(g.offer_made for g in biz_groups),
@@ -503,7 +516,7 @@ def build_funnel_report(
 
     return FunnelReport(
         report_year=report_year,
-        ytd_os_inclines=t["os_incline"],
+        ytd_os_inclines=metrics["os_completed"] - (t["os_reject"]),  # OS passed = inclines
         ytd_offer_accepts=t["offer_accept"],
         ytd_offer_stage=t["offer_made"],
         ytd_offer_declines=t["offer_renege"],

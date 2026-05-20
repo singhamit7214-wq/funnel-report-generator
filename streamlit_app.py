@@ -86,9 +86,10 @@ except Exception as e:
 # ── Success message ──
 st.success(f"✅ Processed {sum(1 for _ in skill_groups)} skill groups from **{uploaded_file.name}**")
 
-# ── Download Word Doc button ──
+# ── Download & Email ──
 docx_bytes = generate_docx(report)
-col_dl1, col_dl2, _ = st.columns([1, 1, 2])
+
+col_dl1, col_dl2 = st.columns([1, 1])
 with col_dl1:
     st.download_button(
         label="📥 Download Word Report",
@@ -96,6 +97,46 @@ with col_dl1:
         file_name="Weekly_Funnel_Report.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
+
+with col_dl2:
+    with st.popover("📧 Send via Email"):
+        st.markdown("**Send report to recipients**")
+        to_emails = st.text_input("To (comma-separated emails)", placeholder="leader1@company.com, leader2@company.com")
+        cc_emails = st.text_input("CC (optional)", placeholder="manager@company.com")
+        email_subject = st.text_input("Subject", value=f"Weekly Funnel Report - FGBS {report_year}")
+        smtp_host = st.text_input("SMTP Host", value=st.session_state.get("smtp_host", "smtp.office365.com"))
+        smtp_port = st.number_input("SMTP Port", value=587, min_value=1, max_value=65535)
+        smtp_user = st.text_input("SMTP Username (your email)", value=st.session_state.get("smtp_user", ""))
+        smtp_pass = st.text_input("SMTP Password / App Password", type="password")
+
+        if st.button("Send Email", type="primary"):
+            if not to_emails.strip():
+                st.error("Enter at least one recipient email.")
+            elif not smtp_user or not smtp_pass:
+                st.error("Enter SMTP credentials.")
+            else:
+                # Save for reuse in session
+                st.session_state["smtp_host"] = smtp_host
+                st.session_state["smtp_user"] = smtp_user
+                try:
+                    from app.email_utils import send_report_email
+                    result = send_report_email(
+                        to_emails=[e.strip() for e in to_emails.split(",") if e.strip()],
+                        cc_emails=[e.strip() for e in cc_emails.split(",") if e.strip()] if cc_emails else [],
+                        subject=email_subject,
+                        docx_bytes=docx_bytes,
+                        smtp_host=smtp_host,
+                        smtp_port=smtp_port,
+                        smtp_user=smtp_user,
+                        smtp_pass=smtp_pass,
+                        report=report,
+                    )
+                    if result["success"]:
+                        st.success(f"✅ {result['message']}")
+                    else:
+                        st.error(f"❌ {result['message']}")
+                except Exception as e:
+                    st.error(f"❌ Failed: {str(e)}")
 
 st.divider()
 
