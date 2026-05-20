@@ -1,0 +1,8 @@
+Skill Group,Demands,RR Awaiting,RR Incline,RR Reject,OA Scheduled,OA Incline,OA Reject,BPS Awaiting,BPS Scheduled,BPS Incline,BPS Reject,OS Awaiting,OS Scheduled,OS Incline,OS Reject,Offer Made,Offer Accept,Offer Renege,Onboard
+"NA-AWS, FA-II, L5",32,1,250,1,4,223,23,17,60,63,83,7,15,19,22,4,13,2,0
+"NA-AWS, FA-III, L6",1,0,3,0,0,3,0,0,0,3,0,0,1,2,0,0,2,0,0
+"NA-DAS, FA-II, L5",9,1,49,2,3,43,3,10,13,10,10,4,3,1,2,0,1,0,0
+"NA-GMAC, FA-I, L4",1,0,2,0,0,2,0,0,0,2,0,0,0,2,0,0,1,1,0
+"NA-GMAC, FA-II, L5",0,0,9,0,0,9,0,0,0,3,6,0,1,1,1,0,1,0,0
+"NA-Accounting, AA-II, L5",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+"NA-Accounting, FA-III, L6",4,2,0,1,2,0,1,1,5,0,1,0,0,0,0,0,0,0,0
