@@ -99,44 +99,57 @@ with col_dl1:
     )
 
 with col_dl2:
-    with st.popover("📧 Send via Email"):
-        st.markdown("**Send report to recipients**")
-        to_emails = st.text_input("To (comma-separated emails)", placeholder="leader1@company.com, leader2@company.com")
-        cc_emails = st.text_input("CC (optional)", placeholder="manager@company.com")
+    with st.popover("📧 Open Email Draft"):
+        st.markdown("**Generate pre-formatted email**")
+        st.markdown("This will open your default email client (Outlook) with the report summary pre-filled.")
+        to_emails = st.text_input("To (comma-separated)", placeholder="leader1@amazon.com, leader2@amazon.com")
+        cc_emails = st.text_input("CC (optional)", placeholder="manager@amazon.com")
         email_subject = st.text_input("Subject", value=f"Weekly Funnel Report - FGBS {report_year}")
-        smtp_host = st.text_input("SMTP Host", value=st.session_state.get("smtp_host", "smtp.office365.com"))
-        smtp_port = st.number_input("SMTP Port", value=587, min_value=1, max_value=65535)
-        smtp_user = st.text_input("SMTP Username (your email)", value=st.session_state.get("smtp_user", ""))
-        smtp_pass = st.text_input("SMTP Password / App Password", type="password")
 
-        if st.button("Send Email", type="primary"):
-            if not to_emails.strip():
-                st.error("Enter at least one recipient email.")
-            elif not smtp_user or not smtp_pass:
-                st.error("Enter SMTP credentials.")
-            else:
-                # Save for reuse in session
-                st.session_state["smtp_host"] = smtp_host
-                st.session_state["smtp_user"] = smtp_user
-                try:
-                    from app.email_utils import send_report_email
-                    result = send_report_email(
-                        to_emails=[e.strip() for e in to_emails.split(",") if e.strip()],
-                        cc_emails=[e.strip() for e in cc_emails.split(",") if e.strip()] if cc_emails else [],
-                        subject=email_subject,
-                        docx_bytes=docx_bytes,
-                        smtp_host=smtp_host,
-                        smtp_port=smtp_port,
-                        smtp_user=smtp_user,
-                        smtp_pass=smtp_pass,
-                        report=report,
-                    )
-                    if result["success"]:
-                        st.success(f"✅ {result['message']}")
-                    else:
-                        st.error(f"❌ {result['message']}")
-                except Exception as e:
-                    st.error(f"❌ Failed: {str(e)}")
+        # Build email body text
+        email_body = f"""Hi Team,
+
+Please find the Weekly Funnel Report update below:
+
+Highlight & Demand Updates:
+In {report.report_year}, we've delivered {report.ytd_os_inclines} OS inclines across L4-L6 roles, leading to {report.ytd_offer_accepts} Offer Accepts, {report.ytd_offer_stage} at Offer Stage and {report.ytd_offer_declines} Offer Declines.
+
+Overall Demand Update - We are working on {report.total_requisitions} requisitions with a pipeline of {report.total_active_pipeline} candidates at advanced stages. BPS-to-Onsite: {f"{report.bps_to_os_pct:.1f}%" if report.bps_to_os_pct else "N/A"} | OS-to-Incline: {f"{report.os_to_incline_pct:.1f}%" if report.os_to_incline_pct else "N/A"} | Offer Accept Rate: {f"{report.offer_acceptance_pct:.1f}%" if report.offer_acceptance_pct else "N/A"}.
+
+Business-wise Updates:
+"""
+        for idx, biz in enumerate(report.business_updates, 1):
+            email_body += f"\n{idx}. {biz.business_name}: {biz.os_inclines} OS inclines → {biz.offer_accepts} offer accepts"
+            if biz.incline_conversion_pct is not None:
+                email_body += f" (Conv: {biz.incline_conversion_pct:.0f}% vs goal 35%)"
+
+        if report.support_items:
+            email_body += "\n\nSupport Required:"
+            for item in report.support_items:
+                email_body += f"\n- {item}"
+
+        email_body += "\n\nPlease find the detailed report attached.\n\nBest regards"
+
+        # Show preview
+        st.text_area("Email Preview (editable)", value=email_body, height=300, key="email_preview")
+
+        # Build mailto link
+        import urllib.parse
+        mailto_to = to_emails.strip() if to_emails else ""
+        params = {}
+        if cc_emails.strip():
+            params["cc"] = cc_emails.strip()
+        params["subject"] = email_subject
+        params["body"] = st.session_state.get("email_preview", email_body)
+
+        mailto_link = f"mailto:{urllib.parse.quote(mailto_to)}?"
+        mailto_link += urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+
+        st.markdown(
+            f'<a href="{mailto_link}" target="_blank" style="display:inline-block;padding:10px 24px;background:#0073bb;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Open in Outlook / Email Client</a>',
+            unsafe_allow_html=True,
+        )
+        st.caption("💡 Tip: Download the Word report first, then attach it manually to the email.")
 
 st.divider()
 
